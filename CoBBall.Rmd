@@ -1,0 +1,328 @@
+---
+title: "Predicting the Trajectory of College Basketball"
+author: "Ryan Smith"
+date: "01/15/2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Introduction
+
+Every year, the goal of a collegiate basketball is to win as many games as possible for as long as possible. Every coach, player, and fan has their own opinion on what is most important aspect of the game of basketball and leads to the most wins, but analytics and data are the way to truly explain the game of basketball and what can lead to more wins. This analytic report's goal is to look at the game of basketball across a decade through statistics and analytics to see how the game continues to change and what a team must do to stay ahead of these new trends.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+library(readr)
+library(dplyr)
+library(bestglm)
+library(car)
+library(ggplot2)
+library(gridExtra)
+library(tidyr)
+library(tidyverse)
+```
+
+# Methodology
+
+The data used in this report came from Andrew Sundberg’s College Basketball Dataset on Kaggle along with his source, barttorvik.com. While Sundberg had seasons 2013-19 scraped and cleaned, seasons 2020-23 were had been scraped by "Bart Torvik" and was cleaned within R to be merged with Sundberg's dataset. These combined datasets included 2013-present day statistics on collegiate basketball teams as a whole. The variables used are listed below with descriptions:
+
+*TEAM: The Division I college basketball school
+
+*CONF: The Athletic Conference in which the school participates in (A10 = Atlantic 10, ACC = Atlantic Coast Conference, AE = America East, Amer = American, ASun = ASUN, B10 = Big Ten, B12 = Big 12, BE = Big East, BSky = Big Sky, BSth = Big South, BW = Big West, CAA = Colonial Athletic Association, CUSA = Conference USA, Horz = Horizon League, Ivy = Ivy League, MAAC = Metro Atlantic Athletic Conference, MAC = Mid-American Conference, MEAC = Mid-Eastern Athletic Conference, MVC = Missouri Valley Conference, MWC = Mountain West, NEC = Northeast Conference, OVC = Ohio Valley Conference, P12 = Pac-12, Pat = Patriot League, SB = Sun Belt, SC = Southern Conference, SEC = South Eastern Conference, Slnd = Southland Conference, Sum = Summit League, SWAC = Southwestern Athletic Conference, WAC = Western Athletic Conference, WCC = West Coast Conference)
+
+*G: Number of games played
+
+*W: Number of games won
+
+*ADJOE: Adjusted Offensive Efficiency (An estimate of the offensive efficiency (points scored per 100 possessions) a team would have against the average Division I defense)
+
+*ADJDE: Adjusted Defensive Efficiency (An estimate of the defensive efficiency (points allowed per 100 possessions) a team would have against the average Division I offense)
+
+*BARTHAG: Power Rating (Chance of beating an average Division I team)
+
+*EFG_O: Effective Field Goal Percentage Shot
+
+*EFG_D: Effective Field Goal Percentage Allowed
+
+*TOR: Turnover Percentage Allowed (Turnover Rate)
+
+*TORD: Turnover Percentage Committed (Steal Rate)
+
+*ORB: Offensive Rebound Rate
+
+*DRB: Offensive Rebound Rate Allowed
+
+*FTR : Free Throw Rate (How often the given team shoots Free Throws)
+
+*FTRD: Free Throw Rate Allowed
+
+*2P_O (TWOP_O): Two-Point Shooting Percentage
+
+*2P_D (TWOP_D): Two-Point Shooting Percentage Allowed
+
+*3P_O (THREEP_O): Three-Point Shooting Percentage
+
+*3P_D (THREEP_D): Three-Point Shooting Percentage Allowed
+
+*ADJ_T: Adjusted Tempo (An estimate of the tempo (possessions per 40 minutes) a team would have against the team that wants to play at an average Division I tempo)
+
+*WAB: Wins Above Bubble (The bubble refers to the cut off between making the NCAA March Madness Tournament and not making it)
+
+*POSTSEASON: Round where the given team was eliminated or where their season ended (R68 = First Four, R64 = Round of 64, R32 = Round of 32, S16 = Sweet Sixteen, E8 = Elite Eight, F4 = Final Four, 2ND = Runner-up, Champion = Winner of the NCAA March Madness Tournament for that given year)
+
+*SEED: Seed in the NCAA March Madness Tournament
+
+*YEAR: Season
+
+*W_PERCENT: Total Win Percentage
+
+After cleaning, the variable W_PERCENT was created to represent the success of a team's season. A correlation matrix was created to find any relationships between the response variables, SEED, W_PERCENT, BARTHAG, and POSTSEASON. There were no strong relationships but W_PERCENT was chosen as the primary response variable because it applied to all teams in the dataset (as SEED and POSTSEASON were in relation to March Madness teams).
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+cbb <- read_csv("archive/cbb.csv")
+
+cbb20 <- read_csv("2020_fffinal.csv")
+cbb20x <- read_csv("2020_team_results.csv")
+cbb20y <- cbb20x %>%
+  separate(col=record,into=c("W","L"),sep="-",convert=TRUE) %>%
+  transmute(TeamName = team, ADJDE = adjde, ADJOE = adjoe, W = W, L = L) %>%
+  right_join(cbb20, by=c('TeamName'))
+cbb20y$YEAR <- "2020"
+
+cbb21 <- read_csv("2021_fffinal.csv")
+cbb21x <- read_csv("2021_team_results.csv")
+cbb21y <- cbb21x %>%
+  separate(col=record,into=c("W","L"),sep="-",convert=TRUE) %>%
+  transmute(TeamName = team, ADJDE = adjde, ADJOE = adjoe, W = W, L = L) %>%
+  right_join(cbb21, by=c('TeamName'))
+cbb21y$YEAR <- "2021"
+
+cbb22 <- read_csv("2022_fffinal.csv")
+cbb22x <- read_csv("2022_team_results.csv")
+cbb22y <- cbb22x %>%
+  separate(col=record,into=c("W","L"),sep="-",convert=TRUE) %>%
+  transmute(TeamName = team, ADJDE = adjde, ADJOE = adjoe, W = W, L = L) %>%
+  right_join(cbb22, by=c('TeamName'))
+cbb22y$YEAR <- "2022"
+
+cbb23 <- read_csv("2023_fffinal.csv")
+cbb23x <- read_csv("2023_team_results.csv")
+cbb23y <- cbb23x %>%
+  separate(col=record,into=c("W","L"),sep="-",convert=TRUE) %>%
+  transmute(TeamName = team, ADJDE = adjde, ADJOE = adjoe, W = W, L = L) %>%
+  right_join(cbb23, by=c('TeamName'))
+cbb23y$YEAR <- "2023"
+
+cbb20_21 <- rbind(cbb20y,cbb21y)
+cbb20_22 <- rbind(cbb20_21,cbb22y)
+cbb20_23 <- rbind(cbb20_22,cbb23y)
+cbb_20_23 <- cbb20_23 %>%
+  transmute(TEAM = TeamName,EFG_O = cbb20_23$'eFG%', EFG_D = cbb20_23$'eFG%',FTR = FTR,FTRD = `FTR Def`, ORB = cbb20_23$`OR%`, DRB = cbb20_23$`DR%`,TOR = cbb20_23$`TO%`, TORD = cbb20_23$`TO% Def.`,`3P_O` = cbb20_23$`3P%`,`3P_D` = cbb20_23$`3pD%`,`2P_O` = cbb20_23$`2p%`, `2P_D` = cbb20_23$`2p%D`, FTR = cbb20_23$`ft%`, FTRD = cbb20_23$`ft%D`, ADJDE = ADJDE , ADJOE = ADJOE, W = W, G = L+W, YEAR = YEAR,W_PERCENT = W / (W+L), CONF=NA,BARTHAG=NA,ADJ_T=NA,WAB=NA,POSTSEASON=NA,SEED=NA)
+
+cbb$W_PERCENT <- cbb$W / cbb$G
+cbb0 <- rbind(cbb,cbb_20_23)
+
+cbb1 <- select(cbb,-G,-W,-BARTHAG,-POSTSEASON,-SEED)
+cbb1$CONF <- as.factor(cbb1$CONF)
+cbb1$YEAR <- as.factor(cbb1$YEAR)
+```
+
+## Modeling:
+
+To best analyze how the game of basketball has changed within the past decade, linear models were made for each season before the COVID-19 season, 2020, and the coefficients were compared. Stepwise functions in both directions were performed for each season to create the best linear model to predict W_PERCENT based on ADJOE, ADJDE, EFG_O, EFG_D, TOR, TORD, ORB, DRB, FTR, FTRD, ADJ_T, TWOP_O, TWOP_D, THREEP_O, and THREEP_D.
+
+```{r, echo=FALSE, warning=FALSE}
+cbb1$TWOP_O <- cbb$`2P_O`
+cbb1$TWOP_D <- cbb$`2P_D`
+cbb1$THREEP_O <- cbb$`3P_O`
+cbb1$THREEP_D <- cbb$`3P_D`
+
+cbb01 <- select(cbb0,-G,-W,-BARTHAG,-POSTSEASON,-SEED)
+
+cbb01$TWOP_O <- cbb0$`2P_O`
+cbb01$TWOP_D <- cbb0$`2P_D`
+cbb01$THREEP_O <- cbb0$`3P_O`
+cbb01$THREEP_D <- cbb0$`3P_D`
+
+cbb_2013 <- subset(cbb1,YEAR=='2013')
+cbb_2014 <- subset(cbb1,YEAR=='2014')
+cbb_2015 <- subset(cbb1,YEAR=='2015')
+cbb_2016 <- subset(cbb1,YEAR=='2016')
+cbb_2017 <- subset(cbb1,YEAR=='2017')
+cbb_2018 <- subset(cbb1,YEAR=='2018')
+cbb_2019 <- subset(cbb1,YEAR=='2019')
+
+none13 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2013'))
+all13 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2013'))
+AIC13_full <- step(none13, direction='both', scope=formula(all13), trace=0)
+
+none14 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2014'))
+all14 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2014'))
+AIC14_full <- step(none14, direction='both', scope=formula(all14), trace=0)
+
+
+none15 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2015'))
+all15 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2015'))
+AIC15_full <- step(none15, direction='both', scope=formula(all15), trace=0)
+
+none16 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2016'))
+all16 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2016'))
+AIC16_full <- step(none16, direction='both', scope=formula(all16), trace=0)
+
+none17 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2017'))
+all17 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2017'))
+AIC17_full <- step(none17, direction='both', scope=formula(all17), trace=0)
+
+none18 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2018'))
+all18 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2018'))
+AIC18_full <- step(none18, direction='both', scope=formula(all18), trace=0)
+
+none19 <- lm(W_PERCENT~1, data=subset(cbb1,YEAR=='2019'))
+all19 <- lm(W_PERCENT~ADJOE+ADJDE+EFG_O+EFG_D+TOR+TORD+ORB+DRB+FTR+FTRD+ADJ_T+TWOP_O+TWOP_D+THREEP_O+THREEP_D, data=subset(cbb1,YEAR=='2019'))
+AIC19_full <- step(none19, direction='both', scope=formula(all19), trace=0)
+```
+
+```{r, echo=FALSE}
+coef_AIC <- c("ADJOE","ADJDE","EFG_D","TORD","EFG_O","DRB","FTR","TOR","ORB","FTRD","ADJ_T","TWOP_O","TWOP_D","THREEP_O","THREEP_D","(Intercept)")
+coef_AIC13 <- data.frame(summary(AIC13_full)$coef[,1])
+coef_AIC14 <- data.frame(summary(AIC14_full)$coef[,1])
+coef_AIC15 <- data.frame(summary(AIC15_full)$coef[,1])
+coef_AIC16 <- data.frame(summary(AIC16_full)$coef[,1])
+coef_AIC17 <- data.frame(summary(AIC17_full)$coef[,1])
+coef_AIC18 <- data.frame(summary(AIC18_full)$coef[,1])
+coef_AIC19 <- data.frame(summary(AIC19_full)$coef[,1])
+
+coef_AIC13 <- cbind(rownames(coef_AIC13), coef_AIC13)
+rownames(coef_AIC13) <- NULL
+colnames(coef_AIC13) <- c("coef_AIC","2013")
+
+coef_AIC14 <- cbind(rownames(coef_AIC14), coef_AIC14)
+rownames(coef_AIC14) <- NULL
+colnames(coef_AIC14) <- c("coef_AIC","2014")
+
+coef_AIC15 <- cbind(rownames(coef_AIC15), coef_AIC15)
+rownames(coef_AIC15) <- NULL
+colnames(coef_AIC15) <- c("coef_AIC","2015")
+
+coef_AIC16 <- cbind(rownames(coef_AIC16), coef_AIC16)
+rownames(coef_AIC16) <- NULL
+colnames(coef_AIC16) <- c("coef_AIC","2016")
+
+coef_AIC17 <- cbind(rownames(coef_AIC17), coef_AIC17)
+rownames(coef_AIC17) <- NULL
+colnames(coef_AIC17) <- c("coef_AIC","2017")
+
+coef_AIC18 <- cbind(rownames(coef_AIC18), coef_AIC18)
+rownames(coef_AIC18) <- NULL
+colnames(coef_AIC18) <- c("coef_AIC","2018")
+
+coef_AIC19 <- cbind(rownames(coef_AIC19), coef_AIC19)
+rownames(coef_AIC19) <- NULL
+colnames(coef_AIC19) <- c("coef_AIC","2019")
+
+df <- data.frame(coef_AIC)
+df2 <- df %>%
+  left_join(coef_AIC13,by=c("coef_AIC")) %>%
+  left_join(coef_AIC14,by=c("coef_AIC")) %>%
+  left_join(coef_AIC15,by=c("coef_AIC")) %>%
+  left_join(coef_AIC16,by=c("coef_AIC")) %>%
+  left_join(coef_AIC17,by=c("coef_AIC")) %>%
+  left_join(coef_AIC18,by=c("coef_AIC")) %>%
+  left_join(coef_AIC19,by=c("coef_AIC"))
+
+df2_1 <- df2[-16,]
+df3 <- gather(df2_1,key="year",value="stat", 2:8)
+df3$year <- as.numeric(df3$year)
+df3_1 <- gather(df2,key="year",value="stat", 2:8)
+df3_1$year <- as.numeric(df3_1$year)
+
+```
+
+The coefficients for each season's model were separated by statistic to create a linear model predicting the coefficient for a new model that could be used in 2023 or any future year. These models of coefficients would be used to predict the impact (coefficient) of each statistic towards the total win percentage in years where there was either incomplete or nonexistent data.
+
+# Data
+
+As shown below, each season's individual step model had an R-Squared value greater than 0.8 showing high levels of correlation across the models.
+
+```{r, echo=FALSE}
+cat("2013 R-Squared value:", summary(AIC13_full)$r.squared)
+cat("2014 R-Squared value:", summary(AIC14_full)$r.squared)
+cat("2015 R-Squared value:", summary(AIC15_full)$r.squared)
+cat("2016 R-Squared value:", summary(AIC16_full)$r.squared)
+cat("2017 R-Squared value:", summary(AIC17_full)$r.squared)
+cat("2018 R-Squared value:", summary(AIC18_full)$r.squared)
+cat("2019 R-Squared value:", summary(AIC19_full)$r.squared)
+```
+
+The below graphic shows the coefficients of each variable across the years 2013-2019. The two most positively significant variables are EFG_O and TORD, while the two most negatively significant variables are EFG_D and TOR.
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(df3,aes(x=year,y=stat,group=coef_AIC,col=coef_AIC)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept=0)
+```
+
+The graphic below shows the absolute value of all coefficients to show that while EFG_O was the most significant variable for a majority of the seasons, EFG_D and TORD have been showing increases since 2017 that have surpassed the significance of EFG_O. Following 2017, the data also show increases in DRB and decreases in TOR which may foreshadow changes in how college basketball is played.
+
+```{r, warning=FALSE, echo=FALSE}
+df4 <- df3
+df4$stat <- abs(df3$stat)
+ggplot(df4,aes(x=year,y=stat,group=coef_AIC,col=coef_AIC)) +
+  geom_point() +
+  geom_line()
+```
+
+```{r, echo=FALSE}
+mod1 <- lm(stat~year,data=filter(df3,coef_AIC=="ADJ_T"))
+mod2 <- lm(stat~year,data=filter(df3,coef_AIC=="ADJDE"))
+mod3 <- lm(stat~year,data=filter(df3,coef_AIC=="ADJOE"))
+mod4 <- lm(stat~year,data=filter(df3,coef_AIC=="DRB"))
+mod5 <- lm(stat~year,data=filter(df3,coef_AIC=="EFG_D"))
+mod6 <- lm(stat~year,data=filter(df3,coef_AIC=="EFG_O"))
+mod7 <- lm(stat~year,data=filter(df3,coef_AIC=="FTR"))
+mod8 <- lm(stat~year,data=filter(df3,coef_AIC=="FTRD"))
+mod9 <- lm(stat~year,data=filter(df3,coef_AIC=="ORB"))
+mod10 <- lm(stat~year,data=filter(df3,coef_AIC=="TOR"))
+mod11 <- lm(stat~year,data=filter(df3,coef_AIC=="TORD"))
+mod12 <- lm(stat~year,data=filter(df3,coef_AIC=="TWOP_O"))
+mod13 <- lm(stat~year,data=filter(df3,coef_AIC=="TWOP_D"))
+mod14 <- lm(stat~year,data=filter(df3,coef_AIC=="THREEP_O"))
+mod15 <- lm(stat~year,data=filter(df3,coef_AIC=="THREEP_D"))
+mod16 <- lm(stat~year,data=filter(df3_1,coef_AIC=="(Intercept)"))
+
+cbb20_predict <- subset(cbb01,YEAR=="2020")
+
+stat <- c("ADJOE","ADJDE","EFG_D","TORD","EFG_O","DRB","FTR","TOR","ORB","FTRD","ADJ_T","TWOP_O","TWOP_D","THREEP_O","THREEP_D","(Intercept)")
+intercept <- c(summary(mod1)$coef[1,1],summary(mod2)$coef[1,1],summary(mod3)$coef[1,1],summary(mod4)$coef[1,1],summary(mod5)$coef[1,1],summary(mod6)$coef[1,1],summary(mod7)$coef[1,1],summary(mod8)$coef[1,1],summary(mod9)$coef[1,1],summary(mod10)$coef[1,1],summary(mod11)$coef[1,1],summary(mod12)$coef[1,1],summary(mod13)$coef[1,1],summary(mod14)$coef[1,1],summary(mod15)$coef[1,1],summary(mod16)$coef[1,1])
+estim <- c(summary(mod1)$coef[2,1],summary(mod2)$coef[2,1],summary(mod3)$coef[2,1],summary(mod4)$coef[2,1],summary(mod5)$coef[2,1],summary(mod6)$coef[2,1],summary(mod7)$coef[2,1],summary(mod8)$coef[2,1],summary(mod9)$coef[2,1],summary(mod10)$coef[2,1],summary(mod11)$coef[2,1],summary(mod12)$coef[2,1],summary(mod13)$coef[2,1],NA,summary(mod15)$coef[2,1],summary(mod16)$coef[2,1])
+
+estimates <- data.frame(stat,intercept,estim)
+estimates[is.na(estimates)] <- 0
+estimates$new <- (2023 * estim) + intercept
+
+unc23 <- filter(cbb01,TEAM=="North Carolina", YEAR == "2023")
+unc23$'(Intercept)' <- 1
+unc23_1 <- t(unc23)
+unc23_2 <- cbind(colnames(unc23), unc23_1)
+rownames(unc23_1) <- NULL
+colnames(unc23_2) <- c("stat","numbers")
+unc23_3 <- left_join(data.frame(estimates),data.frame(unc23_2),by=c("stat"))
+unc23_3$numbers <- as.numeric(unc23_3$numbers)
+unc23_3[is.na(unc23_3)] <- 0
+```
+
+Finally, the final models were used with 2023 as the input to predict the significance, through coefficients, of each variable in the linear model predicting W_PERCENT. The first graphic below shows each variable's predicted coefficient for 2023 and the second graphic shows the absolute value of each coefficient to best compare significance. EFG_O remains the most significant variable with DRB being second most significant, and FTRD and ADJ_T showing themselves to be significant as well.
+
+```{r, echo=FALSE}
+unc23_4 <- unc23_3[-16,]
+ggplot(unc23_4,aes(y=stat,x=new,fill=stat)) +
+  geom_bar(stat="identity",position="dodge")
+ggplot(unc23_4,aes(y=stat,x=abs(new),fill=stat)) +
+  geom_bar(stat="identity",position="dodge")
+```
+
+# Conclusion
+In the previous graphic, FTRD is likely to be more significant than ADJ_T because ADJ_T was removed from many models and was left with an NA value which did not weaken the significance of this model due to the methodology of this report. In the future, a different methodology for model creation may be used to better represent weak correlations.
+College basketball seems to maintain having EFG_O be a major priority for teams to yield victorious seasons, more points mean more wins, and large DRB and FTRD values show the importance of defense against free throws and rebounds.
+To further expand upon this study, more seasons of data may help to see larger trends in variables. More variables such as players, coaches, home vs away games, and more could explain more about seasons outside of on-the-court and overall team statistics.
